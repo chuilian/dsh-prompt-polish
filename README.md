@@ -1,5 +1,12 @@
 # dsh-prompt-polish
 
+> **DSH 自研插件家族 · [索引与恢复顺序](https://github.com/chuilian/dsh-plugins-infra)**
+>
+> 本仓库是 6 个自研插件之一：`dsh-genui` · `dsh-prompt-polish` · `dsh-session-trash` ·
+> `dsh-artifacts` · `dsh-skill-veil` · `plugin-autoupdate`，全部为 `github.com/chuilian` 下的私有仓库。
+>
+> 换机恢复顺序、profile「四处登记」的规则、以及 `lib/` 为什么必须入库，见索引仓库，本 README 不重复。
+
 **提示词美化 / Prompt polish** — a one-click prompt rewriter for the DeepSeek Harness Web composer.
 
 Your draft usually reaches the agent exactly as you typed it. This plugin adds the missing
