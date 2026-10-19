@@ -1,0 +1,27 @@
+# This bundle's patch layer: one Host row that mounts the plugin.
+#
+# The row id is stable and addressable, so a deployment can override the whole
+# `config` block from the profile's own cordis.patch.yml — a later layer replaces
+# a row's complete config, it does not merge into it. Delete any key you do not
+# want to change and the built-in default applies.
+#
+# | Key | Default | Meaning |
+# |---|---|---|
+# | `enabled` | `true` | Answer the routes at all |
+# | `provider` / `model` | unset | Pin an explicit model route; unset uses the profile's default model |
+# | `maxInputChars` | `8000` | Longest draft accepted, in characters |
+# | `maxOutputTokens` | `16384` | Output cap for the polishing call; a measured 317-character draft about two subtasks needed 1087 characters of rewrite plus notes, which overflowed the old 4096 default |
+# | `timeoutMs` | `150000` | Deadline for one polishing call; measured 46–65 s per call and flat across draft sizes from 2000 to 8000 characters, so the old 90s default left little headroom |
+# | `reasoningEffort` | unset | `off`/`low`/`medium` accepted, `high`/`max` capped down to `medium`. Unset leaves the route's own default, which is often `high` and spends most of a call thinking about text it is about to rewrite |
+# | `trustedHosts` | `[]` | Extra non-loopback authorities allowed to call the routes |
+
+- insert:
+    - id: prompt-polish
+      name: 'dsh-prompt-polish'
+      config:
+        enabled: true
+        maxInputChars: 8000
+        maxOutputTokens: 16384
+        timeoutMs: 150000
+        reasoningEffort: low
+        trustedHosts: []
