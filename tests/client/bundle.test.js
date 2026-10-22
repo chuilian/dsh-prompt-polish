@@ -667,6 +667,45 @@ test("button: a click posts the draft, the locale, and the session to the Host r
   assert.equal(store.getSnapshot().prompt, "Polished text.");
 });
 
+test("requestPolish: a Host timeout above 180s extends the client guard", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const loaded = await loadBundle();
+  const { requestPolish } = loaded.exports.__test;
+  const calls = [];
+  const controller = new AbortController();
+
+  await withFetch(
+    async (url, init) => {
+      calls.push({ url, init });
+      if (url === "/prompt-polish/status") {
+        return {
+          async json() {
+            return { ok: true, value: { timeoutMs: 300_000 } };
+          }
+        };
+      }
+      return await new Promise((resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    },
+    async () => {
+      const pending = requestPolish({ text: "x", locale: "zh", sessionId: undefined }, controller.signal);
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      assert.equal(calls.length, 1);
+      t.mock.timers.tick(180_000);
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+      assert.equal(calls.length, 2, "the deadline asks the Host how long it waits");
+      assert.equal(calls[1].url, "/prompt-polish/status");
+      assert.equal(calls[0].init.signal.aborted, false, "180s must not cut off a longer Host deadline");
+      t.mock.timers.tick(150_000);
+      const result = await pending;
+      assert.equal(calls[0].init.signal.aborted, true, "the Host deadline plus grace ends the wait");
+      assert.equal(result.ok, false);
+      assert.equal(result.code, "timeout");
+    }
+  );
+});
+
 test("button: a refusal opens the panel and keeps the reason on screen", async () => {
   const loaded = await loadBundle();
   const { PolishButton, createStore, dictionaries } = loaded.exports.__test;

@@ -189,26 +189,52 @@ test("status: reports the profile's default model as a ready route", async () =>
       enabled: true,
       ready: true,
       route: { provider: "deepseek-official", model: "deepseek-flash", source: "agent-default-model" },
-      reason: null
+      reason: null,
+      timeoutMs: 150_000
     }
   });
+});
+
+test("status: exposes the Host timeout so a client can outwait it", async () => {
+  const ctx = fakeHostCtx({ llm: fakeLlm(replyStream("x")) });
+  registerPolishRoutes(ctx, { config: () => effectiveConfig({ timeoutMs: 300_000 }) });
+  const response = await call(ctx, fakeRequest({ method: "GET", url: "/prompt-polish/status" }));
+  assert.equal(response.json().value.timeoutMs, 300_000);
 });
 
 test("status: names the reason when no polish can run", async () => {
   const noLlm = fakeHostCtx();
   registerPolishRoutes(noLlm, { config: () => effectiveConfig(undefined) });
   const first = await call(noLlm, fakeRequest({ method: "GET", url: "/prompt-polish/status" }));
-  assert.deepEqual(first.json().value, { enabled: true, ready: false, route: null, reason: "no-llm-service" });
+  assert.deepEqual(first.json().value, {
+    enabled: true,
+    ready: false,
+    route: null,
+    reason: "no-llm-service",
+    timeoutMs: 150_000
+  });
 
   const noRoute = fakeHostCtx({ llm: fakeLlm(replyStream("x")) });
   registerPolishRoutes(noRoute, { config: () => effectiveConfig(undefined) });
   const second = await call(noRoute, fakeRequest({ method: "GET", url: "/prompt-polish/status" }));
-  assert.deepEqual(second.json().value, { enabled: true, ready: false, route: null, reason: "no-model-route" });
+  assert.deepEqual(second.json().value, {
+    enabled: true,
+    ready: false,
+    route: null,
+    reason: "no-model-route",
+    timeoutMs: 150_000
+  });
 
   const disabled = fakeHostCtx({ llm: fakeLlm(replyStream("x")) });
   registerPolishRoutes(disabled, { config: () => effectiveConfig({ enabled: false }) });
   const third = await call(disabled, fakeRequest({ method: "GET", url: "/prompt-polish/status" }));
-  assert.deepEqual(third.json().value, { enabled: false, ready: false, route: null, reason: "disabled" });
+  assert.deepEqual(third.json().value, {
+    enabled: false,
+    ready: false,
+    route: null,
+    reason: "disabled",
+    timeoutMs: 150_000
+  });
 });
 
 test("polish: returns the rewrite, the edits, and the route it used", async () => {

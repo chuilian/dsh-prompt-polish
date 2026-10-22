@@ -27,6 +27,20 @@ import {
   resolveReasoningEffort
 } from "../../lib/host/prompt.js";
 
+test("extractJsonObject: trailing prose braces do not swallow the object", () => {
+  const object = '{"prompt":"改写后的提示词。","changes":["明确目标"],"summary":"更清晰"}';
+  assert.equal(extractJsonObject(`${object}\n（字段形如 {prompt, changes}）`), object);
+});
+
+test("decodeModelReply: braces in trailing prose keep a complete answer intact", () => {
+  const reply = '{"prompt":"改写后的提示词。","changes":["明确目标"],"summary":"更清晰"}\n（字段形如 {prompt, changes}）';
+  const decoded = decodeModelReply(reply);
+  assert.equal(decoded.ok, true);
+  assert.equal(decoded.structured, true);
+  assert.deepEqual(decoded.changes, ["明确目标"]);
+  assert.equal(decoded.summary, "更清晰");
+});
+
 test("effectiveConfig: defaults are complete and closed", () => {
   const live = effectiveConfig(undefined);
   assert.deepEqual(live, {
@@ -240,6 +254,12 @@ test("decodeTruncatedReply: recovers a clean ending but refuses a mid-thought on
   const midThought = decodeTruncatedReply('{"prompt":"先在 B 站检索教学');
   assert.equal(midThought.ok, false);
   assert.equal(midThought.code, CODES.maxTokens);
+});
+
+test("decodeTruncatedReply: an earlier paragraph does not excuse an unfinished tail", () => {
+  const decoded = decodeTruncatedReply('{"prompt":"第一段已经写好。\\n第二段写到一半');
+  assert.equal(decoded.ok, false);
+  assert.equal(decoded.code, CODES.maxTokens);
 });
 
 test("decodeTruncatedReply: a completed changes list survives the cut", () => {
