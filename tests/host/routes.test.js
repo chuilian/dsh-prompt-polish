@@ -237,6 +237,19 @@ test("status: names the reason when no polish can run", async () => {
   });
 });
 
+test("status: a model service that is present but empty is not a ready route", async () => {
+  // `polishDraft` refuses a null model service, so the status endpoint must not
+  // claim a readiness the polish route would refuse.
+  const ctx = fakeHostCtx({ llm: null, agentDefaultModel: { currentSelection: () => ({ provider: "p", model: "m" }) } });
+  registerPolishRoutes(ctx, { config: () => effectiveConfig(undefined) });
+  const response = await call(ctx, fakeRequest({ method: "GET", url: "/prompt-polish/status" }));
+  assert.equal(response.json().value.ready, false);
+  assert.equal(response.json().value.reason, "no-llm-service");
+
+  const polish = await call(ctx, fakeRequest({ body: { text: "hi" } }));
+  assert.equal(polish.status, 503);
+});
+
 test("polish: returns the rewrite, the edits, and the route it used", async () => {
   const llm = fakeLlm(replyStream('{"prompt":"Rewrite this properly.","changes":["tightened"],"summary":"clearer"}'));
   const ctx = fakeHostCtx({
@@ -479,6 +492,38 @@ test("model outcomes: every finish reason becomes an actionable refusal", async 
     yield { type: "text-delta", index: 0, text: "orphan" };
   });
   assert.equal((await call(noFinish, fakeRequest({ body: { text: "hi" } }))).json().code, "transport-failure");
+});
+
+test("model outcomes: a cut prose reply is refused, not pasted as a finished rewrite", async () => {
+  // The output cap cuts whatever the model was writing, and what it was writing
+  // is usually prose. Handing that cut prose back as the rewrite put half a
+  // sentence into the user's composer, so the route refuses it the same way it
+  // refuses a cut JSON envelope.
+  const cut = fakeHostCtx({
+    llm: fakeLlm(async function* stream() {
+      yield { type: "text-delta", index: 0, text: "先在 B 站检索零基础 AI 小说教学，然后整理成学习路径，并列出每天的" };
+      yield { type: "finish", reason: { kind: "max-tokens" } };
+    }),
+    agentDefaultModel: { currentSelection: () => ({ provider: "p", model: "m" }) }
+  });
+  registerPolishRoutes(cut, { config: () => effectiveConfig(undefined) });
+  const cutResponse = await call(cut, fakeRequest({ body: { text: "hi" } }));
+  assert.equal(cutResponse.status, 502);
+  assert.equal(cutResponse.json().code, "output-truncated");
+
+  // A prose reply that ends on a sentence is still recovered.
+  const whole = fakeHostCtx({
+    llm: fakeLlm(async function* stream() {
+      yield { type: "text-delta", index: 0, text: "先在 B 站检索零基础 AI 小说教学，然后整理成学习路径。" };
+      yield { type: "finish", reason: { kind: "max-tokens" } };
+    }),
+    agentDefaultModel: { currentSelection: () => ({ provider: "p", model: "m" }) }
+  });
+  registerPolishRoutes(whole, { config: () => effectiveConfig(undefined) });
+  const wholeResponse = await call(whole, fakeRequest({ body: { text: "hi" } }));
+  assert.equal(wholeResponse.status, 200);
+  assert.equal(wholeResponse.json().value.truncated, true);
+  assert.equal(wholeResponse.json().value.prompt, "先在 B 站检索零基础 AI 小说教学，然后整理成学习路径。");
 });
 
 test("model outcomes: the plugin's own deadline is reported as a timeout", async () => {

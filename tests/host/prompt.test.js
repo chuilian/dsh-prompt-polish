@@ -278,6 +278,33 @@ test("decodeTruncatedReply: a half-written changes array yields no partial list"
   assert.deepEqual(decoded.changes, []);
 });
 
+test("decodeTruncatedReply: a cut prose reply is refused, exactly like a cut JSON one", () => {
+  // The output cap usually cuts a reply that is prose, not one that is JSON. That
+  // path used to skip the sentence-punctuation rule the JSON path obeys, so a
+  // half-sentence was handed back as a finished rewrite and the client pasted it
+  // into the user's composer.
+  const cut = decodeTruncatedReply("先在 B 站检索零基础 AI 小说教学，然后整理成可执行的学习路径，并列出每天的");
+  assert.equal(cut.ok, false);
+  assert.equal(cut.code, CODES.maxTokens);
+
+  // A prose reply that does end on a sentence is still recovered.
+  const whole = decodeTruncatedReply("先在 B 站检索零基础 AI 小说教学，然后整理成可执行的学习路径。");
+  assert.equal(whole.ok, true);
+  assert.equal(whole.truncated, true);
+  assert.equal(whole.structured, false);
+  assert.equal(whole.prompt, "先在 B 站检索零基础 AI 小说教学，然后整理成可执行的学习路径。");
+});
+
+test("decodeModelReply: change notes keep the digits that belong to them", () => {
+  // Only a list marker is stripped. Digits that are part of the note are part of
+  // what the model said, and dropping them changed the meaning of the audit trail.
+  const decoded = decodeModelReply(
+    JSON.stringify({ prompt: "p", changes: ["1. 明确目标文件", "3 个子任务已拆分", "2024 年的数据保留", "- 去掉口语化表达"] })
+  );
+  assert.equal(decoded.ok, true);
+  assert.deepEqual(decoded.changes, ["明确目标文件", "3 个子任务已拆分", "2024 年的数据保留", "去掉口语化表达"]);
+});
+
 test("resolveReasoningEffort: unset defers to the route, and runaway values are capped", () => {
   assert.equal(resolveReasoningEffort(undefined), undefined, "no opinion leaves the route in charge");
   assert.equal(resolveReasoningEffort(""), undefined);

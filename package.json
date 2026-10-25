@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-polish",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "One-click prompt polishing in the DSH Web composer: a sparkle button that rewrites the draft into a professional, unambiguous, executable prompt and shows a before/after comparison. · DSH 输入框提示词美化：点一下星标按钮，草稿就被改写成专业、准确、可执行的提示词，并给出前后对比。",
   "icon": "icon.svg",

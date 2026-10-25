@@ -706,6 +706,66 @@ test("requestPolish: a Host timeout above 180s extends the client guard", async 
   );
 });
 
+test("requestPolish: an answered request leaves no deadline timer behind", async (t) => {
+  // The deadline extension asks the Host how long it waits. When the answer
+  // arrives while that probe is still in flight, the probe used to arm a fresh
+  // timer afterwards — minutes later it woke up and asked the Host for a status
+  // nobody was waiting for.
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const loaded = await loadBundle();
+  const { requestPolish } = loaded.exports.__test;
+  const calls = [];
+  let resolvePolish;
+  let releaseProbe;
+  const controller = new AbortController();
+
+  await withFetch(
+    async (url) => {
+      calls.push({ url });
+      if (url === "/prompt-polish/status") {
+        await new Promise((resolve) => {
+          releaseProbe = resolve;
+        });
+        return {
+          async json() {
+            return { ok: true, value: { timeoutMs: 300_000 } };
+          }
+        };
+      }
+      return await new Promise((resolve) => {
+        resolvePolish = resolve;
+      });
+    },
+    async () => {
+      const pending = requestPolish({ text: "x", locale: "zh", sessionId: undefined }, controller.signal);
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+      assert.equal(calls.length, 1);
+
+      // The client guard fires and starts the probe.
+      t.mock.timers.tick(180_000);
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+      assert.equal(calls.length, 2, "the deadline asks the Host how long it waits");
+      assert.equal(calls[1].url, "/prompt-polish/status");
+
+      // The Host answers the polish while that probe is still in flight.
+      resolvePolish({
+        async json() {
+          return { ok: true, value: { prompt: "ok" } };
+        }
+      });
+      const result = await pending;
+      assert.equal(result.ok, true);
+
+      // The probe answers afterwards: the request is over, so nothing may be armed.
+      releaseProbe();
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+      t.mock.timers.tick(600_000);
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+      assert.equal(calls.length, 2, "a settled request must not wake up and ask the Host again");
+    }
+  );
+});
+
 test("button: a refusal opens the panel and keeps the reason on screen", async () => {
   const loaded = await loadBundle();
   const { PolishButton, createStore, dictionaries } = loaded.exports.__test;

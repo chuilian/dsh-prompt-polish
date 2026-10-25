@@ -166,6 +166,10 @@ Auxiliary calls are not schema-constrained, so decoding is layered rather than s
    wrapper: fail with `malformed-output` rather than pasting braces into the composer.
 4. Anything else is taken as the rewrite itself (`structured: false`). A real rewrite is worth
    more than a protocol detail, and the panel says the model returned no notes.
+5. When the output cap fired, the partial reply goes through the same layering. A cut reply is
+   recovered only when the rewrite ends on real sentence punctuation — for a JSON envelope *and*
+   for a prose reply alike — because half a sentence pasted into a composer is worse than an
+   honest error. Otherwise the call fails with `output-truncated`.
 
 ## Configuration resolution
 
