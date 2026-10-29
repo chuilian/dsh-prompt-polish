@@ -369,3 +369,29 @@ test("collectText: tolerates junk chunks and a stream with no terminal chunk", a
   assert.deepEqual(deltas, ["ok"]);
   assert.equal(finish, undefined);
 });
+
+test("decodeTruncatedReply: an in-sentence separator is not an ending", () => {
+  // Output caps cut Chinese text after a comma far more often than after a period.
+  // `，`/`：`/`、` used to count as terminators, so half a sentence was recovered
+  // and pasted into the composer — the outcome the module's own comment forbids.
+  for (const cut of ['{"prompt":"把代码重构一下，', '{"prompt":"目标：', '{"prompt":"第一步、']) {
+    const decoded = decodeTruncatedReply(cut);
+    assert.equal(decoded.ok, false, cut);
+    assert.equal(decoded.code, CODES.maxTokens);
+  }
+  // A quoted sentence may end with the closing quote after the period.
+  const quoted = decodeTruncatedReply('{"prompt":"他说：「先做这个。」');
+  assert.equal(quoted.ok, true);
+  assert.equal(quoted.prompt, "他说：「先做这个。」");
+});
+
+test("decodeModelReply: a prose brace does not shadow the real object", () => {
+  // The model explains the shape first, then answers. Taking the first brace
+  // dropped the structured answer and pasted "好的。{prompt, changes} …" instead.
+  const reply = '好的。{prompt, changes} 然后 {"prompt":"把函数拆小。","changes":["拆成两个"]}';
+  const decoded = decodeModelReply(reply);
+  assert.equal(decoded.ok, true);
+  assert.equal(decoded.structured, true);
+  assert.equal(decoded.prompt, "把函数拆小。");
+  assert.deepEqual(decoded.changes, ["拆成两个"]);
+});
