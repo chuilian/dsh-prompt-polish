@@ -78,9 +78,28 @@ block rather than merging into it, so restate any key you keep.
 | `maxOutputTokens` | `16384` | Output cap for the polishing call. A measured 317-character draft about two subtasks produced 1200 characters of rewrite plus change notes, which overflowed the old `4096` default and made the plugin discard the whole rewrite |
 | `timeoutMs` | `150000` | Deadline for one polishing call. Measured on the live installation: 46–65 s per call, flat across draft sizes (see [Measured behaviour](#measured-behaviour)). The old `90000` default was tight for anything longer |
 | `reasoningEffort` | unset | `off`/`low`/`medium` are honoured; `high`/`max` are capped to `medium`. Unset leaves the route's own default, which is often `high` — correct, but slow on long drafts |
+| `retryDelaysMs` | `[2000, 4000]` | Waits between attempts when the route refuses for lack of capacity — two re-asks, about six seconds in all. `[]` switches the re-asking off |
 | `trustedHosts` | `[]` | Extra non-loopback authorities allowed to call the routes |
 
 Changing any of these takes effect on the next request; no remount is needed.
+
+### When the route is busy
+
+Some deployments put a gateway in front of the model, and a gateway on a shared key can
+admit exactly one request at a time. A polish started while the session itself is
+generating is then refused at admission — an HTTP 429 — which DSH reports as a generic
+transport failure and which used to reach the human as 「模型调用失败，请重试」 with no
+hint that waiting would have fixed it.
+
+That refusal now has its own code, `model-busy`, and is retried on the schedule in
+`retryDelaysMs` before anything is reported. The retry costs nothing on the provider
+side: admission refused the request before the model saw it, so no tokens are spent and
+no output is duplicated. If the route is still busy after the last attempt, the refusal
+says so — the code and its wording are in `docs/SPEC.md`.
+
+The retry shares one deadline: it never buys the call more wall-clock time than
+`timeoutMs` promised, and it gives up early rather than answering after the caller has
+gone.
 
 ## How it works
 

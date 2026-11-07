@@ -581,6 +581,7 @@ test("errorText: known refusal codes are localized, unknown ones keep the Host's
     "malformed-output",
     "aborted",
     "transport-failure",
+    "model-busy",
     "network",
     "internal"
   ];

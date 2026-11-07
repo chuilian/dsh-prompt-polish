@@ -20,6 +20,7 @@ import {
   extractJsonObject,
   frameDraft,
   isChineseLocale,
+  isCongestionFailure,
   looksChinese,
   systemPrompt,
   validateDraft,
@@ -51,8 +52,18 @@ test("effectiveConfig: defaults are complete and closed", () => {
     maxOutputTokens: 16384,
     timeoutMs: 150_000,
     reasoningEffort: undefined,
+    retryDelaysMs: [2000, 4000],
     trustedHosts: []
   });
+});
+
+test("effectiveConfig: retryDelaysMs is sanitized, and an empty list disables retrying", () => {
+  assert.deepEqual(effectiveConfig({ retryDelaysMs: [] }).retryDelaysMs, []);
+  assert.deepEqual(effectiveConfig({ retryDelaysMs: [0, 100.7, -5, "x", 1e9] }).retryDelaysMs, [0, 100, 30000]);
+  assert.deepEqual(effectiveConfig({ retryDelaysMs: [1, 2, 3, 4, 5] }).retryDelaysMs, [1, 2, 3]);
+  // A typo must not silently disable the retry it is meant to tune.
+  assert.deepEqual(effectiveConfig({ retryDelaysMs: "soon" }).retryDelaysMs, [2000, 4000]);
+  assert.deepEqual(effectiveConfig({ retryDelaysMs: ["x"] }).retryDelaysMs, [2000, 4000]);
 });
 
 test("effectiveConfig: reads live settings references, not just plain values", () => {
@@ -339,9 +350,26 @@ test("classifyFailure: stable codes become actionable advice", () => {
   assert.equal(classifyFailure({ code: "ABORTED" }, false).code, CODES.aborted);
   // The plugin's own deadline wins over whatever the provider reported.
   assert.equal(classifyFailure({ code: "ABORTED" }, true).code, CODES.timeout);
-  const unknown = classifyFailure({ code: "RATE_LIMIT", message: "slow down" }, false);
+  // A capacity refusal is its own class: the gateway answers a second concurrent
+  // request with RATE_LIMIT plus `concurrent_request_limit`, and the human needs
+  // "wait a moment" rather than "the model call failed".
+  const busy = classifyFailure({ code: "RATE_LIMIT", message: "slow down" }, false);
+  assert.equal(busy.code, CODES.busy);
+  assert.equal(busy.retryable, true);
+  const gateway = classifyFailure(
+    { code: "RATE_LIMIT", message: "concurrent_request_limit (phase=admission, retryable=false)", status: 429 },
+    false
+  );
+  assert.equal(gateway.code, CODES.busy);
+  assert.equal(isCongestionFailure({ status: 429 }), true);
+  assert.equal(isCongestionFailure({ code: "SERVER", message: "socket hang up" }), false);
+  // Cancellation and our own deadline still outrank congestion.
+  assert.equal(classifyFailure({ code: "RATE_LIMIT" }, false, true).code, CODES.aborted);
+  assert.equal(classifyFailure({ code: "RATE_LIMIT" }, true).code, CODES.timeout);
+  const unknown = classifyFailure({ code: "SERVER", message: "boom" }, false);
   assert.equal(unknown.code, CODES.transport);
-  assert.equal(unknown.message, "slow down");
+  assert.equal(unknown.message, "boom");
+  assert.equal(unknown.retryable, undefined);
   assert.equal(classifyFailure(undefined, false).code, CODES.transport);
 });
 

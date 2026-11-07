@@ -13,6 +13,7 @@
 # | `maxOutputTokens` | `16384` | Output cap for the polishing call; a measured 317-character draft about two subtasks needed 1087 characters of rewrite plus notes, which overflowed the old 4096 default |
 # | `timeoutMs` | `150000` | Deadline for one polishing call; measured 46–65 s per call and flat across draft sizes from 2000 to 8000 characters, so the old 90s default left little headroom |
 # | `reasoningEffort` | unset | `off`/`low`/`medium` accepted, `high`/`max` capped down to `medium`. Unset leaves the route's own default, which is often `high` and spends most of a call thinking about text it is about to rewrite |
+# | `retryDelaysMs` | `[2000, 4000]` | Waits between attempts when a gateway refuses for lack of capacity (one concurrent request per key); `[]` disables the re-asking |
 # | `trustedHosts` | `[]` | Extra non-loopback authorities allowed to call the routes |
 
 - insert:
@@ -24,4 +25,5 @@
         maxOutputTokens: 16384
         timeoutMs: 150000
         reasoningEffort: low
+        retryDelaysMs: [2000, 4000]
         trustedHosts: []

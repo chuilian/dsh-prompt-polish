@@ -108,6 +108,7 @@ Chinese text inside an English UI:
 | `provider-unavailable` | the adapter reported `NO_ADAPTER` |
 | `missing-credential` | `MISSING_CREDENTIAL` / `INVALID_CREDENTIAL` |
 | `timeout` | the plugin's own deadline fired |
+| `model-busy` | the route refused for lack of capacity (a gateway admitting one concurrent request); retried before it is reported |
 | `output-truncated` | the model hit `maxTokens` |
 | `empty-output` | the model returned no text |
 | `malformed-output` | an object-shaped reply with no rewrite field in it |
@@ -115,6 +116,24 @@ Chinese text inside an English UI:
 | `transport-failure` | any other provider failure |
 | `network` | the client could not reach the route at all |
 | `internal` | an unforeseen server-side error |
+
+### Which failures may be retried
+
+Only one class of failure is retried: a refusal for lack of capacity, which is what a
+gateway answers with when it admits a single concurrent request per key. Two properties
+make that safe. The request never reached the model, so re-sending it duplicates no work
+and spends no tokens; and the wait is short and bounded, so the cost of being wrong is a
+few seconds rather than a duplicated long call.
+
+Everything else stays single-shot. A malformed reply, a credential problem, a truncated
+output and the plugin's own deadline are all answers — asking again would either repeat
+the same outcome or spend quota twice on a request that may already have been served.
+
+The classification reads the provider's own wording as well as its code, because the
+gateway reports the refusal as `RATE_LIMIT` with `concurrent_request_limit` in the
+message, and DSH's own retry policy does not treat that as retryable on this route. A
+`retryable: false` hint in the provider body is deliberately ignored for the same reason:
+it is what the gateway says about admission, not about the request.
 
 ### What a failure is allowed to leave behind
 

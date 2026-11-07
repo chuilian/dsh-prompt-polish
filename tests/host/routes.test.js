@@ -427,6 +427,51 @@ test("transport: methods, unknown actions, and oversized bodies are refused expl
   assert.equal(malformed.json().code, "empty-input");
 });
 
+test("capacity: a busy route is re-asked before the human is told anything", async () => {
+  const attempts = [];
+  const ctx = fakeHostCtx({
+    llm: fakeLlm(() => {
+      attempts.push(1);
+      if (attempts.length === 1) {
+        return (async function* busy() {
+          yield {
+            type: "finish",
+            reason: { kind: "error", failure: { code: "RATE_LIMIT", message: "concurrent_request_limit" } }
+          };
+        })();
+      }
+      return replyStream('{"prompt":"美化后的文本"}')({});
+    }),
+    agentDefaultModel: { currentSelection: () => ({ provider: "p", model: "m" }) }
+  });
+  // Zero-delay schedule: the retry logic is what is under test, not the wall clock.
+  registerPolishRoutes(ctx, { config: () => effectiveConfig({ retryDelaysMs: [0, 0] }) });
+
+  const response = await call(ctx, fakeRequest({ body: { text: "hi" } }));
+  assert.equal(response.status, 200);
+  assert.equal(response.json().value.prompt, "美化后的文本");
+  assert.equal(attempts.length, 2);
+});
+
+test("capacity: exhausted retries end in the busy refusal, not a generic one", async () => {
+  const attempts = [];
+  const ctx = fakeHostCtx({
+    llm: fakeLlm(() => {
+      attempts.push(1);
+      return (async function* busy() {
+        yield { type: "finish", reason: { kind: "error", failure: { code: "HTTP_429", message: "too many requests" } } };
+      })();
+    }),
+    agentDefaultModel: { currentSelection: () => ({ provider: "p", model: "m" }) }
+  });
+  registerPolishRoutes(ctx, { config: () => effectiveConfig({ retryDelaysMs: [0, 0] }) });
+
+  const response = await call(ctx, fakeRequest({ body: { text: "hi" } }));
+  assert.equal(response.status, 502);
+  assert.equal(response.json().code, "model-busy");
+  assert.equal(attempts.length, 3);
+});
+
 test("model outcomes: every finish reason becomes an actionable refusal", async () => {
   const build = (script, config) => {
     const ctx = fakeHostCtx({
@@ -437,12 +482,20 @@ test("model outcomes: every finish reason becomes an actionable refusal", async 
     return ctx;
   };
 
-  const errored = build(async function* stream() {
-    yield { type: "finish", reason: { kind: "error", failure: { code: "RATE_LIMIT", message: "slow down" } } };
-  });
+  // A capacity refusal reports itself as such, and never leaks the internal
+  // retry flag into the HTTP body. Retrying is switched off here so the refusal
+  // surfaces on the first attempt (its own test covers the re-asking).
+  const errored = build(
+    async function* stream() {
+      yield { type: "finish", reason: { kind: "error", failure: { code: "RATE_LIMIT", message: "slow down" } } };
+    },
+    { retryDelaysMs: [] }
+  );
   const errorResponse = await call(errored, fakeRequest({ body: { text: "hi" } }));
   assert.equal(errorResponse.status, 502);
-  assert.deepEqual(errorResponse.json(), { ok: false, code: "transport-failure", message: "slow down" });
+  assert.deepEqual(Object.keys(errorResponse.json()).sort(), ["code", "message", "ok"]);
+  assert.equal(errorResponse.json().code, "model-busy");
+  assert.match(errorResponse.json().message, /模型正忙/u);
 
   const noAdapter = build(async function* stream() {
     yield { type: "finish", reason: { kind: "error", failure: { code: "NO_ADAPTER", message: "no adapter" } } };
