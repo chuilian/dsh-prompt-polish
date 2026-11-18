@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Prompt Polish",
-    "description": "Polishes the composer draft into a professional, unambiguous, executable prompt and shows a before/after comparison."
+    "title": "Prompt polish",
+    "description": "Rewrites the composer draft into a professional, unambiguous, executable prompt with the profile's own model, then shows the before/after comparison before anything is sent."
   }
 }

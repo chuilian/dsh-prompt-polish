@@ -47,23 +47,38 @@ would sit on top of the first line of a long draft. Moving it is one constant
 
 ## Install
 
-Installed the same way as any DSH bundle, from a source directory:
+### From GitHub (recommended)
+
+```
+dsh plugin --profile <name> add github:chuilian/dsh-prompt-polish
+```
+
+…or through the Web GUI's plugin manager, or through the `plugin_manager` tool
+(`install_bundle` with `github:chuilian/dsh-prompt-polish` as `target`). Reload the
+page afterwards — the client half is a browser bundle.
+
+### From a source directory (development)
 
 ```
 dsh plugin --profile <name> add link:/absolute/path/to/dsh-prompt-polish
 ```
 
-…or through the Web GUI's plugin manager, or through the `plugin_manager` tool
-(`install_bundle` with this directory as `target`). Each route has its own
-prerequisite, because the two are easy to confuse:
+Each route has its own prerequisite, because they are easy to confuse:
 
 | Route | What it does | What you must still do |
 |---|---|---|
-| `dsh plugin … add link:` | Installs the dependency only | Add `dsh-prompt-polish` to `dsh.profile.bundles` yourself, or nothing loads |
+| `dsh plugin … add github:` / `link:` | Installs the dependency only | Add `dsh-prompt-polish` to `dsh.profile.bundles` yourself, or nothing loads |
 | `plugin_manager` / `install_bundle` | Adds the bundle **and** hot-reloads the profile | Refresh the page — the client half is a browser bundle |
 
 Whichever route you take, a change to `lib/host/*` needs a DSH restart and a
 change to `lib/client.js` needs a page refresh. Nothing here hot-reloads.
+
+> ⚠️ **After a `link:` install, do not run `pnpm install` in the same profile.**
+> It recomputes `node_modules` from the lockfile, which reverts the `link:` symlinks
+> to the registry versions. If your plugin manager reports
+> `ERR_PNPM_RESOLUTION_POLICY_VIOLATIONS_UNHANDLED` (the `minimumReleaseAge` policy
+> without a `no handleResolutionPolicyViolations` callback), install from GitHub
+> instead, or register the bundle by hand.
 
 ## Configuration
 
